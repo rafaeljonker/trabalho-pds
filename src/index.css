@@ -1,0 +1,42 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+:root {
+  font-family: 'Space Grotesk', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  color: #e8eefc;
+  background-color: #050913;
+  line-height: 1.5;
+  font-weight: 400;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  --accent: #5af59d;
+  --accent-strong: #4da5ff;
+  --card: #0b1224;
+  --muted: #9bb0d2;
+  --border: rgba(255, 255, 255, 0.08);
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--accent);
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: radial-gradient(120% 120% at 10% 20%, rgba(90, 245, 157, 0.12), transparent),
+    radial-gradient(120% 120% at 90% 20%, rgba(77, 165, 255, 0.12), transparent),
+    #050913;
+  color: #e8eefc;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+button {
+  font-family: inherit;
+}
