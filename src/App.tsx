@@ -68,8 +68,10 @@ function App() {
   const [q, setQ] = useState(defaults.q)
   const [filterGain, setFilterGain] = useState(defaults.filterGain)
   const [outputGain, setOutputGain] = useState(defaults.outputGain)
+  const [bypass, setBypass] = useState(false)
 
   const audioCtx = useRef<AudioContext | null>(null)
+  const sourceNode = useRef<MediaStreamAudioSourceNode | null>(null)
   const filterNode = useRef<BiquadFilterNode | null>(null)
   const gainNode = useRef<GainNode | null>(null)
   const analyser = useRef<AnalyserNode | null>(null)
@@ -91,6 +93,7 @@ function App() {
     analyser.current?.disconnect()
     gainNode.current?.disconnect()
     filterNode.current?.disconnect()
+    sourceNode.current?.disconnect()
 
     if (audioCtx.current) {
       audioCtx.current.close()
@@ -113,6 +116,7 @@ function App() {
     filterNode.current.frequency.value = cutoff
     filterNode.current.Q.value = q
     filterNode.current.gain.value = filterGain
+    wireGraph()
   }, [filterType, cutoff, q, filterGain])
 
   useEffect(() => {
@@ -120,6 +124,9 @@ function App() {
       gainNode.current.gain.value = outputGain
     }
   }, [outputGain])
+  useEffect(() => {
+    wireGraph()
+  }, [bypass])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -136,6 +143,25 @@ function App() {
     window.addEventListener('resize', resize)
     return () => window.removeEventListener('resize', resize)
   }, [])
+
+  const wireGraph = () => {
+    if (!audioCtx.current || !sourceNode.current || !gainNode.current || !analyser.current) return
+
+    sourceNode.current.disconnect()
+    filterNode.current?.disconnect()
+    gainNode.current.disconnect()
+    analyser.current.disconnect()
+
+    if (bypass || !filterNode.current) {
+      sourceNode.current.connect(gainNode.current)
+    } else {
+      sourceNode.current.connect(filterNode.current)
+      filterNode.current.connect(gainNode.current)
+    }
+
+    gainNode.current.connect(analyser.current)
+    analyser.current.connect(audioCtx.current.destination)
+  }
 
   const drawSpectrum = () => {
     const canvas = canvasRef.current
@@ -216,16 +242,14 @@ function App() {
       analyserNode.fftSize = 2048
       analyserNode.smoothingTimeConstant = 0.7
 
-      src.connect(filter)
-      filter.connect(gain)
-      gain.connect(analyserNode)
-      analyserNode.connect(ctx.destination)
-
       audioCtx.current = ctx
+      sourceNode.current = src
       filterNode.current = filter
       gainNode.current = gain
       analyser.current = analyserNode
       micStream.current = stream
+
+      wireGraph()
 
       setStatus('running')
       setStatusMsg('Capturando e filtrando áudio em tempo real.')
@@ -264,6 +288,7 @@ function App() {
     setQ(defaults.q)
     setFilterGain(defaults.filterGain)
     setOutputGain(defaults.outputGain)
+    setBypass(false)
   }
 
   const running = status === 'running'
@@ -358,6 +383,17 @@ function App() {
                 <small>{option.helper}</small>
               </button>
             ))}
+          </div>
+
+          <div className="bypass-row">
+            <label className="toggle">
+              <input type="checkbox" checked={bypass} onChange={(e) => setBypass(e.target.checked)} />
+              <span className="checkmark" />
+              <div>
+                <p className="label">Ouvir voz original (bypass)</p>
+                <p className="hint">Ignora o filtro e envia o áudio cru para a saída.</p>
+              </div>
+            </label>
           </div>
 
           <div className="sliders">

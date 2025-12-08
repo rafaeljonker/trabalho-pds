@@ -290,6 +290,52 @@
   transform: translateY(-1px);
 }
 
+.bypass-row {
+  margin: 10px 0 12px;
+}
+
+.toggle {
+  display: inline-flex;
+  gap: 10px;
+  align-items: center;
+  cursor: pointer;
+}
+
+.toggle input {
+  display: none;
+}
+
+.checkmark {
+  width: 38px;
+  height: 22px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  position: relative;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.checkmark::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.2s;
+}
+
+.toggle input:checked + .checkmark {
+  background: rgba(90, 245, 157, 0.2);
+  border-color: var(--accent);
+}
+
+.toggle input:checked + .checkmark::after {
+  transform: translateX(14px);
+}
+
 .sliders {
   display: grid;
   gap: 12px;
