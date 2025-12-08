@@ -5,6 +5,19 @@ type FilterKind = 'lowpass' | 'highpass' | 'bandpass' | 'notch'
 
 type Status = 'idle' | 'running' | 'error'
 
+type Preset = {
+  id: string
+  label: string
+  description: string
+  settings: {
+    filterType: FilterKind
+    cutoff: number
+    q: number
+    filterGain: number
+    outputGain?: number
+  }
+}
+
 const defaults = {
   filterType: 'lowpass' as FilterKind,
   cutoff: 1200,
@@ -18,6 +31,33 @@ const filters: { label: string; value: FilterKind; helper: string }[] = [
   { label: 'High-pass', value: 'highpass', helper: 'Remove graves e corta ruídos de ar/vento.' },
   { label: 'Band-pass', value: 'bandpass', helper: 'Isola uma faixa, útil para voz em chamada.' },
   { label: 'Notch', value: 'notch', helper: 'Corta uma banda estreita (zumbido de rede, chiados).' },
+]
+
+const presets: Preset[] = [
+  {
+    id: 'voice-clear',
+    label: 'Voz clara',
+    description: 'Corta graves leves e deixa voz mais inteligível.',
+    settings: { filterType: 'highpass', cutoff: 110, q: 0.9, filterGain: 0 },
+  },
+  {
+    id: 'remove-hum',
+    label: 'Remover zumbido',
+    description: 'Notch estreito perto de 60 Hz (rede elétrica).',
+    settings: { filterType: 'notch', cutoff: 60, q: 12, filterGain: -12 },
+  },
+  {
+    id: 'background-soft',
+    label: 'Suavizar fundo',
+    description: 'Low-pass suave reduzindo chiados de alta frequência.',
+    settings: { filterType: 'lowpass', cutoff: 4500, q: 0.7, filterGain: 0 },
+  },
+  {
+    id: 'walkie',
+    label: 'Modo rádio',
+    description: 'Band-pass médio para efeito de walkie-talkie.',
+    settings: { filterType: 'bandpass', cutoff: 1500, q: 3.2, filterGain: 3, outputGain: 1.1 },
+  },
 ]
 
 function App() {
@@ -208,6 +248,16 @@ function App() {
     return <span className={variants[status]}>{status.toUpperCase()}</span>
   }
 
+  const applyPreset = (preset: Preset) => {
+    setFilterType(preset.settings.filterType)
+    setCutoff(preset.settings.cutoff)
+    setQ(preset.settings.q)
+    setFilterGain(preset.settings.filterGain)
+    if (preset.settings.outputGain !== undefined) {
+      setOutputGain(preset.settings.outputGain)
+    }
+  }
+
   const resetControls = () => {
     setFilterType(defaults.filterType)
     setCutoff(defaults.cutoff)
@@ -280,6 +330,22 @@ function App() {
               <h2>Parâmetros do filtro</h2>
             </div>
             <span className="micro-hint">Dica: clique e arraste devagar para ouvir a mudança.</span>
+          </div>
+          <div className="preset-block">
+            <div className="preset-header">
+              <h3>Presets rápidos</h3>
+              <p className="preset-hint">Escolha um atalho e ajuste fino pelos sliders.</p>
+            </div>
+            <div className="preset-grid">
+              {presets.map((preset) => (
+                <button key={preset.id} className="preset-card" onClick={() => applyPreset(preset)}>
+                  <div className="preset-top">
+                    <span className="preset-name">{preset.label}</span>
+                  </div>
+                  <p className="preset-desc">{preset.description}</p>
+                </button>
+              ))}
+            </div>
           </div>
           <div className="filter-types">
             {filters.map((option) => (
