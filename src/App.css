@@ -163,6 +163,22 @@
   font-weight: 700;
 }
 
+.ws-connected {
+  color: #56f59c;
+}
+
+.ws-connecting {
+  color: #9bb0d2;
+}
+
+.ws-disconnected {
+  color: #ffcc80;
+}
+
+.ws-error {
+  color: #ff8a7a;
+}
+
 .grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

@@ -4,6 +4,7 @@ import './App.css'
 type FilterKind = 'lowpass' | 'highpass' | 'bandpass' | 'notch'
 
 type Status = 'idle' | 'running' | 'error'
+type WsStatus = 'disconnected' | 'connecting' | 'connected' | 'error'
 
 type Preset = {
   id: string
@@ -69,6 +70,7 @@ function App() {
   const [filterGain, setFilterGain] = useState(defaults.filterGain)
   const [outputGain, setOutputGain] = useState(defaults.outputGain)
   const [bypass, setBypass] = useState(false)
+  const [wsStatus, setWsStatus] = useState<WsStatus>('disconnected')
 
   const audioCtx = useRef<AudioContext | null>(null)
   const sourceNode = useRef<MediaStreamAudioSourceNode | null>(null)
@@ -78,6 +80,8 @@ function App() {
   const micStream = useRef<MediaStream | null>(null)
   const rafId = useRef<number | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const wsRef = useRef<WebSocket | null>(null)
+  const reconnectTimer = useRef<number | null>(null)
 
   const stopAudio = () => {
     if (rafId.current !== null) {
@@ -107,6 +111,10 @@ function App() {
   useEffect(() => {
     return () => {
       stopAudio()
+      if (reconnectTimer.current) {
+        window.clearTimeout(reconnectTimer.current)
+      }
+      wsRef.current?.close()
     }
   }, [])
 
@@ -129,6 +137,62 @@ function App() {
   }, [bypass])
 
   useEffect(() => {
+    let closed = false
+
+    const connect = () => {
+      if (closed) return
+      if (reconnectTimer.current) {
+        window.clearTimeout(reconnectTimer.current)
+        reconnectTimer.current = null
+      }
+      setWsStatus('connecting')
+
+      try {
+        const ws = new WebSocket('ws://localhost:8765')
+        wsRef.current = ws
+
+        ws.onopen = () => {
+          if (closed) return
+          setWsStatus('connected')
+        }
+
+        ws.onclose = () => {
+          if (closed) return
+          setWsStatus('disconnected')
+          if (reconnectTimer.current) {
+            window.clearTimeout(reconnectTimer.current)
+          }
+          reconnectTimer.current = window.setTimeout(connect, 2000)
+        }
+
+        ws.onerror = () => {
+          if (closed) return
+          setWsStatus('error')
+          ws.close()
+        }
+      } catch (err) {
+        console.error('Erro ao abrir WebSocket', err)
+        setWsStatus('error')
+        if (reconnectTimer.current) {
+          window.clearTimeout(reconnectTimer.current)
+        }
+        reconnectTimer.current = window.setTimeout(connect, 2000)
+      }
+    }
+
+    connect()
+
+    return () => {
+      closed = true
+      if (reconnectTimer.current) {
+        window.clearTimeout(reconnectTimer.current)
+        reconnectTimer.current = null
+      }
+      wsRef.current?.close()
+    }
+  }, [])
+
+  useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
 
@@ -143,6 +207,29 @@ function App() {
     window.addEventListener('resize', resize)
     return () => window.removeEventListener('resize', resize)
   }, [])
+
+  useEffect(() => {
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return
+
+    const payload = JSON.stringify({
+      filterType,
+      cutoff,
+      q,
+      filterGain,
+      outputGain,
+      bypass,
+    })
+
+    const timeoutId = window.setTimeout(() => {
+      try {
+        wsRef.current?.send(payload)
+      } catch (err) {
+        console.error('Falha ao enviar parâmetros para o backend', err)
+      }
+    }, 120)
+
+    return () => window.clearTimeout(timeoutId)
+  }, [filterType, cutoff, q, filterGain, outputGain, bypass, wsStatus])
 
   const wireGraph = () => {
     if (!audioCtx.current || !sourceNode.current || !gainNode.current || !analyser.current) return
@@ -272,6 +359,17 @@ function App() {
     return <span className={variants[status]}>{status.toUpperCase()}</span>
   }
 
+  const renderBackendStatus = () => {
+    const labels: Record<WsStatus, string> = {
+      connected: 'Backend conectado',
+      connecting: 'Conectando ao backend...',
+      disconnected: 'Aguardando backend (ws://localhost:8765)',
+      error: 'Erro na conexão com backend',
+    }
+
+    return <span className={`pill-value ws-${wsStatus}`}>{labels[wsStatus]}</span>
+  }
+
   const applyPreset = (preset: Preset) => {
     setFilterType(preset.settings.filterType)
     setCutoff(preset.settings.cutoff)
@@ -323,6 +421,10 @@ function App() {
             <span className="status-msg">{statusMsg}</span>
           </div>
           <div className="mini-grid">
+            <div>
+              <p className="pill-label">Backend Python</p>
+              {renderBackendStatus()}
+            </div>
             <div>
               <p className="pill-label">Filtro ativo</p>
               <p className="pill-value">{filters.find((f) => f.value === filterType)?.label}</p>
