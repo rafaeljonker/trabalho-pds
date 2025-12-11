@@ -75,6 +75,7 @@ function App() {
   const inputDeviceName = 'default'
   const outputDeviceName = sinkName
   const [deviceStatus, setDeviceStatus] = useState('')
+  const [autoDeviceApplied, setAutoDeviceApplied] = useState(false)
   const [wizardStep, setWizardStep] = useState(0)
   const [copyHint, setCopyHint] = useState('')
   const [wsStatus, setWsStatus] = useState<WsStatus>('disconnected')
@@ -440,7 +441,7 @@ function App() {
     setWizardStep(0)
   }
 
-  const sendDeviceSelection = () => {
+  const sendDeviceSelection = useCallback(() => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
       setDeviceStatus('Backend offline ou desconectado.')
       return
@@ -457,7 +458,20 @@ function App() {
       console.error('Falha ao enviar devices', err)
       setDeviceStatus('Erro ao enviar devices')
     }
-  }
+  }, [inputDeviceName, outputDeviceName])
+
+  useEffect(() => {
+    if (wsStatus === 'connected' && !autoDeviceApplied) {
+      setDeviceStatus(
+        `Aplicando padrão: input=${inputDeviceName || 'default'} / output=${outputDeviceName || sinkName}`
+      )
+      sendDeviceSelection()
+      setAutoDeviceApplied(true)
+    }
+    if (wsStatus === 'disconnected' || wsStatus === 'error') {
+      setAutoDeviceApplied(false)
+    }
+  }, [wsStatus, autoDeviceApplied, sendDeviceSelection, inputDeviceName, outputDeviceName, sinkName])
 
   return (
     <div className="page">

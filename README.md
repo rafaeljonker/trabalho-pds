@@ -29,7 +29,8 @@ print(sd.query_devices())
 PY
 ```
    - `INPUT_DEVICE`: seu microfone físico (ou `None` para padrão).
-   - `OUTPUT_DEVICE`: o dispositivo virtual (ex.: "CABLE Input", "BlackHole 2ch").
+   - `OUTPUT_DEVICE`: o dispositivo virtual (ex.: "CABLE Input", "BlackHole 2ch"). Por padrão usamos
+     `VirtualMicPDS` e, se não existir, o backend cai para a saída padrão (`pulse`).
 
 3) Rode o backend:
 ```bash
