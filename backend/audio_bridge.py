@@ -55,7 +55,9 @@ def _parse_device(env_value: Optional[str], default: str) -> int | str:
 
 
 INPUT_DEVICE: Optional[int | str] = _parse_device(os.getenv("INPUT_DEVICE"), "pulse")  # ex.: "alsa_input..."
-OUTPUT_DEVICE: Optional[int | str] = _parse_device(os.getenv("OUTPUT_DEVICE"), "pulse")  # ex.: "VirtualMicPDS"
+OUTPUT_DEVICE: Optional[int | str] = _parse_device(
+    os.getenv("OUTPUT_DEVICE"), "VirtualMicPDS"
+)  # ex.: "VirtualMicPDS"
 WS_HOST = "0.0.0.0"
 WS_PORT = 8765
 
@@ -235,7 +237,16 @@ async def ws_handler(websocket):
 
 
 async def main():
-    await restart_stream(INPUT_DEVICE, OUTPUT_DEVICE)
+    try:
+        await restart_stream(INPUT_DEVICE, OUTPUT_DEVICE)
+    except Exception as exc:  # noqa: BLE001
+        # Se o mic virtual não existir, tenta cair para o padrão do sistema.
+        fallback_output = "pulse"
+        print(
+            f"Falha ao iniciar em {INPUT_DEVICE!r}->{OUTPUT_DEVICE!r}: {exc}. "
+            f"Tentando fallback para {fallback_output!r}."
+        )
+        await restart_stream(INPUT_DEVICE, fallback_output)
     print(f"WebSocket pronto em ws://{WS_HOST}:{WS_PORT}")
 
     async with websockets.serve(ws_handler, WS_HOST, WS_PORT):
