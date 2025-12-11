@@ -37,13 +37,25 @@ def patch_portaudio_loader() -> None:
 patch_portaudio_loader()
 import sounddevice as sd
 
+current_stream: Optional[sd.Stream] = None
+stream_lock = asyncio.Lock()
+
 # ---------- Configurações principais ----------
 # Ajuste estes valores para os dispositivos corretos.
 # Use sd.query_devices() para descobrir nomes/índices.
 SAMPLE_RATE = 48000
 CHANNELS = 1
-INPUT_DEVICE: Optional[int | str] = None  # ex.: "Microfone (USB)"
-OUTPUT_DEVICE: Optional[int | str] = None  # ex.: "CABLE Input" (dispositivo virtual)
+def _parse_device(env_value: Optional[str], default: str) -> int | str:
+    if env_value is None:
+        return default
+    env_value = env_value.strip()
+    if env_value.isdigit():
+        return int(env_value)
+    return env_value
+
+
+INPUT_DEVICE: Optional[int | str] = _parse_device(os.getenv("INPUT_DEVICE"), "pulse")  # ex.: "alsa_input..."
+OUTPUT_DEVICE: Optional[int | str] = _parse_device(os.getenv("OUTPUT_DEVICE"), "pulse")  # ex.: "VirtualMicPDS"
 WS_HOST = "0.0.0.0"
 WS_PORT = 8765
 
@@ -97,6 +109,36 @@ def prime_filter():
     zi = signal.sosfilt_zi(current_sos)
 
 
+def open_stream(input_device, output_device) -> sd.Stream:
+    """Abre e inicia o stream de áudio com os dispositivos informados."""
+    stream = sd.Stream(
+        samplerate=SAMPLE_RATE,
+        channels=CHANNELS,
+        dtype="float32",
+        callback=audio_cb,
+        device=(input_device, output_device),
+    )
+    stream.start()
+    return stream
+
+
+async def restart_stream(input_device, output_device):
+    """Reinicia o stream trocando dispositivos sem derrubar o backend."""
+    global current_stream, INPUT_DEVICE, OUTPUT_DEVICE
+    async with stream_lock:
+        if current_stream:
+            current_stream.stop()
+            current_stream.close()
+            current_stream = None
+
+        INPUT_DEVICE = input_device
+        OUTPUT_DEVICE = output_device
+        prime_filter()
+        current_stream = open_stream(INPUT_DEVICE, OUTPUT_DEVICE)
+        print(f"Capturando em {INPUT_DEVICE!r} -> enviando para {OUTPUT_DEVICE!r}")
+        return INPUT_DEVICE, OUTPUT_DEVICE
+
+
 def audio_cb(indata, outdata, frames, time, status):  # noqa: ANN001
     """Callback do PortAudio: processa mic -> filtro -> saída virtual."""
     global current_sos, zi, state
@@ -125,6 +167,57 @@ async def ws_handler(websocket):
     async for message in websocket:
         try:
             payload: Dict = json.loads(message)
+
+            # Ações específicas (trocar devices, listar devices, etc.)
+            action = payload.get("action")
+            if action == "setDevices":
+                input_dev = payload.get("input", INPUT_DEVICE)
+                output_dev = payload.get("output", OUTPUT_DEVICE)
+                try:
+                    await restart_stream(input_dev, output_dev)
+                    await websocket.send(
+                        json.dumps(
+                            {
+                                "ok": True,
+                                "action": "setDevices",
+                                "device": {"input": input_dev, "output": output_dev},
+                            }
+                        )
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    await websocket.send(
+                        json.dumps(
+                            {"ok": False, "action": "setDevices", "error": str(exc)}
+                        )
+                    )
+                continue
+
+            if action == "listDevices":
+                try:
+                    devices = []
+                    for idx, dev in enumerate(sd.query_devices()):
+                        devices.append(
+                            {
+                                "id": idx,
+                                "name": dev["name"],
+                                "maxInput": int(dev["max_input_channels"]),
+                                "maxOutput": int(dev["max_output_channels"]),
+                            }
+                        )
+                    await websocket.send(
+                        json.dumps(
+                            {"ok": True, "action": "listDevices", "devices": devices}
+                        )
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    await websocket.send(
+                        json.dumps(
+                            {"ok": False, "action": "listDevices", "error": str(exc)}
+                        )
+                    )
+                continue
+
+            # Fluxo antigo: apenas parâmetros do filtro.
             for key in ("filterType", "cutoff", "q", "filterGain", "outputGain", "bypass"):
                 if key in payload:
                     value = payload[key]
@@ -142,16 +235,7 @@ async def ws_handler(websocket):
 
 
 async def main():
-    prime_filter()
-    stream = sd.Stream(
-        samplerate=SAMPLE_RATE,
-        channels=CHANNELS,
-        dtype="float32",
-        callback=audio_cb,
-        device=(INPUT_DEVICE, OUTPUT_DEVICE),
-    )
-    stream.start()
-    print(f"Capturando em {INPUT_DEVICE!r} -> enviando para {OUTPUT_DEVICE!r}")
+    await restart_stream(INPUT_DEVICE, OUTPUT_DEVICE)
     print(f"WebSocket pronto em ws://{WS_HOST}:{WS_PORT}")
 
     async with websockets.serve(ws_handler, WS_HOST, WS_PORT):
