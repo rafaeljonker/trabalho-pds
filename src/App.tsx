@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import './App.css'
 
 type FilterKind = 'lowpass' | 'highpass' | 'bandpass' | 'notch'
@@ -70,16 +70,7 @@ function App() {
   const [filterGain, setFilterGain] = useState(defaults.filterGain)
   const [outputGain, setOutputGain] = useState(defaults.outputGain)
   const [bypass, setBypass] = useState(false)
-  const [showVirtualModal, setShowVirtualModal] = useState(false)
-  const sinkName = 'VirtualMicPDS'
-  const inputDeviceName = 'default'
-  const outputDeviceName = sinkName
-  const [deviceStatus, setDeviceStatus] = useState('')
-  const [autoDeviceApplied, setAutoDeviceApplied] = useState(false)
-  const [wizardStep, setWizardStep] = useState(0)
-  const [copyHint, setCopyHint] = useState('')
   const [wsStatus, setWsStatus] = useState<WsStatus>('disconnected')
-  const helperDownloadUrl = `${import.meta.env.BASE_URL}audio-helper.zip`
 
   const audioCtx = useRef<AudioContext | null>(null)
   const sourceNode = useRef<MediaStreamAudioSourceNode | null>(null)
@@ -117,37 +108,6 @@ function App() {
     setStatusMsg('Captura interrompida. Clique em "Iniciar" para reativar.')
   }
 
-  const copyToClipboard = async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text)
-      setCopyHint('Copiado!')
-      window.setTimeout(() => setCopyHint(''), 1200)
-    } catch (err) {
-      console.error('Falha ao copiar', err)
-      setCopyHint('Falha ao copiar')
-      window.setTimeout(() => setCopyHint(''), 1200)
-    }
-  }
-
-  const wireGraph = useCallback(() => {
-    if (!audioCtx.current || !sourceNode.current || !gainNode.current || !analyser.current) return
-
-    sourceNode.current.disconnect()
-    filterNode.current?.disconnect()
-    gainNode.current.disconnect()
-    analyser.current.disconnect()
-
-    if (bypass || !filterNode.current) {
-      sourceNode.current.connect(gainNode.current)
-    } else {
-      sourceNode.current.connect(filterNode.current)
-      filterNode.current.connect(gainNode.current)
-    }
-
-    gainNode.current.connect(analyser.current)
-    analyser.current.connect(audioCtx.current.destination)
-  }, [bypass])
-
   useEffect(() => {
     return () => {
       stopAudio()
@@ -165,7 +125,7 @@ function App() {
     filterNode.current.Q.value = q
     filterNode.current.gain.value = filterGain
     wireGraph()
-  }, [filterType, cutoff, q, filterGain, wireGraph])
+  }, [filterType, cutoff, q, filterGain])
 
   useEffect(() => {
     if (gainNode.current) {
@@ -174,7 +134,7 @@ function App() {
   }, [outputGain])
   useEffect(() => {
     wireGraph()
-  }, [bypass, wireGraph])
+  }, [bypass])
 
   useEffect(() => {
     let closed = false
@@ -194,24 +154,6 @@ function App() {
         ws.onopen = () => {
           if (closed) return
           setWsStatus('connected')
-        }
-
-        ws.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data)
-            if (data.action === 'setDevices') {
-              if (data.ok) {
-                setDeviceStatus(
-                  `Aplicado: input=${data.device?.input ?? ''} / output=${data.device?.output ?? ''}`
-                )
-              } else {
-                setDeviceStatus(`Erro ao aplicar devices: ${data.error}`)
-              }
-              return
-            }
-          } catch (err) {
-            console.error('Falha ao ler mensagem do backend', err)
-          }
         }
 
         ws.onclose = () => {
@@ -288,6 +230,25 @@ function App() {
 
     return () => window.clearTimeout(timeoutId)
   }, [filterType, cutoff, q, filterGain, outputGain, bypass, wsStatus])
+
+  const wireGraph = () => {
+    if (!audioCtx.current || !sourceNode.current || !gainNode.current || !analyser.current) return
+
+    sourceNode.current.disconnect()
+    filterNode.current?.disconnect()
+    gainNode.current.disconnect()
+    analyser.current.disconnect()
+
+    if (bypass || !filterNode.current) {
+      sourceNode.current.connect(gainNode.current)
+    } else {
+      sourceNode.current.connect(filterNode.current)
+      filterNode.current.connect(gainNode.current)
+    }
+
+    gainNode.current.connect(analyser.current)
+    analyser.current.connect(audioCtx.current.destination)
+  }
 
   const drawSpectrum = () => {
     const canvas = canvasRef.current
@@ -429,74 +390,16 @@ function App() {
   }
 
   const running = status === 'running'
-  const linuxCreateCmd = `pactl load-module module-null-sink sink_name=${sinkName} sink_properties=device.description=${sinkName}`
-  const helperOnline = wsStatus === 'connected'
-
-  const nextStep = () => setWizardStep((s) => Math.min(s + 1, 2))
-  const prevStep = () => setWizardStep((s) => Math.max(s - 1, 0))
-
-  const finishWizard = () => {
-    sendDeviceSelection()
-    setShowVirtualModal(false)
-    setWizardStep(0)
-  }
-
-  const sendDeviceSelection = useCallback(() => {
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-      setDeviceStatus('Backend offline ou desconectado.')
-      return
-    }
-    const payload = {
-      action: 'setDevices',
-      input: inputDeviceName || null,
-      output: outputDeviceName || null,
-    }
-    try {
-      wsRef.current.send(JSON.stringify(payload))
-      setDeviceStatus('Enviando devices ao backend...')
-    } catch (err) {
-      console.error('Falha ao enviar devices', err)
-      setDeviceStatus('Erro ao enviar devices')
-    }
-  }, [inputDeviceName, outputDeviceName])
-
-  useEffect(() => {
-    if (wsStatus === 'connected' && !autoDeviceApplied) {
-      setDeviceStatus(
-        `Aplicando padrão: input=${inputDeviceName || 'default'} / output=${outputDeviceName || sinkName}`
-      )
-      sendDeviceSelection()
-      setAutoDeviceApplied(true)
-    }
-    if (wsStatus === 'disconnected' || wsStatus === 'error') {
-      setAutoDeviceApplied(false)
-    }
-  }, [wsStatus, autoDeviceApplied, sendDeviceSelection, inputDeviceName, outputDeviceName, sinkName])
 
   return (
     <div className="page">
-      {(wsStatus === 'disconnected' || wsStatus === 'error') && (
-        <div className="alert">
-          <div>
-            <p className="alert-title">Helper local não encontrado</p>
-            <p className="alert-text">
-              Abra o helper/binário que acompanha o projeto para que o site controle seu áudio.
-              Depois recarregue ou aguarde reconexão automática.
-            </p>
-          </div>
-          <button className="ghost" onClick={() => setShowVirtualModal(true)}>
-            Ver guia rápido
-          </button>
-        </div>
-      )}
-
       <header className="hero">
         <div className="hero-left">
           <p className="eyebrow">Browser Audio Lab</p>
           <h1>Filtragem de áudio em tempo real</h1>
           <p className="lede">
-            Conecte ao helper local (ws://localhost:8765), ajuste filtros no site e envie o som
-            filtrado para seu microfone virtual. Use fones para evitar microfonia.
+            Clique em iniciar, permita o microfone e ajuste os filtros enquanto ouve o retorno. Use
+            fones para evitar microfonia.
           </p>
           <div className="actions">
             <button className="primary" onClick={running ? stopAudio : startAudio}>
@@ -504,9 +407,6 @@ function App() {
             </button>
             <button className="ghost" onClick={resetControls} disabled={running}>
               Restaurar padrões
-            </button>
-            <button className="ghost" onClick={() => setShowVirtualModal(true)}>
-              Guia: microfone virtual
             </button>
           </div>
           <div className="inline-help">
@@ -721,134 +621,6 @@ function App() {
           </ul>
         </section>
       </main>
-
-      {showVirtualModal && (
-        <div className="modal-backdrop" onClick={() => setShowVirtualModal(false)}>
-          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <div>
-                <p className="eyebrow">Virtual Mic</p>
-                <h2>Passo a passo</h2>
-                <p className="muted">
-                  Siga as etapas para baixar o helper, criar o microfone virtual e conectar. Ao
-                  concluir, aplicamos os devices no backend local.
-                </p>
-              </div>
-              <button className="ghost close" onClick={() => setShowVirtualModal(false)}>
-                Fechar
-              </button>
-            </div>
-
-            <div className="wizard-steps">
-              <button className={`step-btn ${wizardStep === 0 ? 'active' : ''}`} onClick={() => setWizardStep(0)}>
-                1. Baixar helper
-              </button>
-              <button className={`step-btn ${wizardStep === 1 ? 'active' : ''}`} onClick={() => setWizardStep(1)}>
-                2. Criar mic virtual
-              </button>
-              <button className={`step-btn ${wizardStep === 2 ? 'active' : ''}`} onClick={() => setWizardStep(2)}>
-                3. Finalizar
-              </button>
-            </div>
-
-            {wizardStep === 0 && (
-              <div className="modal-section">
-                <h3>Baixe e abra o helper local</h3>
-                <p className="muted">
-                  O helper é quem captura seu microfone e envia para o mic virtual. Baixe e execute antes de usar o
-                  site.
-                </p>
-                <a className="primary link-btn" href={helperDownloadUrl} download>
-                  Baixar helper
-                </a>
-                <small className="muted">
-                  O download vem do arquivo público audio-helper.zip; ajuste o link se hospedar em outro lugar.
-                </small>
-                <div className="muted" style={{ marginTop: '12px' }}>
-                  <p style={{ marginBottom: 6 }}>Como executar (Linux):</p>
-                  <pre className="code-block" style={{ marginBottom: 8 }}>
-                    unzip audio-helper.zip{'\n'}
-                    chmod +x audio-helper{'\n'}
-                    ./audio-helper
-                  </pre>
-                  <p style={{ marginBottom: 6 }}>
-                    Deixe o terminal aberto; o site reconecta automaticamente. Em Windows/macOS (se empacotar para
-                    essas plataformas), apenas abra o binário correspondente.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {wizardStep === 1 && (
-              <div className="modal-grid">
-                <div className="modal-section">
-                  <h3>Linux (PulseAudio/PipeWire)</h3>
-                  <p className="muted">Criar sink virtual</p>
-                  <pre className="code-block">{linuxCreateCmd}</pre>
-                  <button className="ghost" onClick={() => copyToClipboard(linuxCreateCmd)}>
-                    Copiar comando
-                  </button>
-                </div>
-                <div className="modal-section">
-                  <h3>Windows</h3>
-                  <ul className="muted">
-                    <li>Instale VB-CABLE (ou Voicemeeter).</li>
-                    <li>O dispositivo aparece como &quot;CABLE Input&quot;/&quot;CABLE Output&quot;.</li>
-                    <li>No Discord/Meet, selecione &quot;CABLE Output&quot; como microfone.</li>
-                  </ul>
-                </div>
-                <div className="modal-section">
-                  <h3>macOS</h3>
-                  <ul className="muted">
-                    <li>Instale BlackHole (2ch).</li>
-                    <li>Use &quot;BlackHole 2ch&quot; como saída do helper.</li>
-                    <li>Nos apps, escolha &quot;BlackHole 2ch&quot; como microfone.</li>
-                  </ul>
-                </div>
-              </div>
-            )}
-
-            {wizardStep === 2 && (
-              <div className="modal-section">
-                <h3>Finalizar e aplicar</h3>
-                <p className="muted">
-                  Vamos aplicar o padrão: input=<strong>default</strong> / output=<strong>{sinkName}</strong>. Depois
-                  feche o modal, ajuste os filtros e selecione o mic virtual no Discord/Meet.
-                </p>
-                <p className="muted">
-                  Se precisar escolher dispositivos específicos, edite o backend ou personalize o código.
-                </p>
-                <p className="muted">
-                  Input: <strong>{inputDeviceName || 'default'}</strong> / Output:{' '}
-                  <strong>{outputDeviceName || sinkName}</strong>
-                </p>
-                <button className="primary" onClick={finishWizard} disabled={!helperOnline}>
-                  Concluir e aplicar
-                </button>
-                {!helperOnline && <small className="muted">Helper não conectado. Abra o helper e tente de novo.</small>}
-                {deviceStatus && <p className="muted">Status: {deviceStatus}</p>}
-              </div>
-            )}
-
-            <div className="wizard-actions">
-              <button className="ghost" onClick={prevStep} disabled={wizardStep === 0}>
-                Voltar
-              </button>
-              {wizardStep < 2 ? (
-                <button className="primary" onClick={nextStep}>
-                  Próximo
-                </button>
-              ) : (
-                <button className="ghost" onClick={() => setShowVirtualModal(false)}>
-                  Fechar
-                </button>
-              )}
-            </div>
-
-            {copyHint && <p className="copy-hint">{copyHint}</p>}
-          </div>
-        </div>
-      )}
     </div>
   )
 }
