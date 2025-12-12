@@ -643,6 +643,58 @@ input[type='range'] {
   }
 }
 
+/* ========== AI SECTION STYLES ========== */
+
+.ai-section,
+.voice-lab {
+  background: linear-gradient(145deg, rgba(109, 241, 203, 0.03), rgba(77, 165, 255, 0.05));
+}
+
+.ai-feature-card {
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 16px;
+  transition: transform 0.2s, border-color 0.2s;
+}
+
+.ai-feature-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(109, 241, 203, 0.3);
+}
+
+.ai-feature-card h4 {
+  color: #6df1cb;
+  margin: 0 0 8px;
+  font-size: 1rem;
+}
+
+.ai-feature-card p {
+  margin: 0;
+  font-size: 0.875rem;
+  opacity: 0.8;
+  line-height: 1.5;
+}
+
+.chat-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.chat-container::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 3px;
+}
+
+.chat-container::-webkit-scrollbar-thumb {
+  background: rgba(109, 241, 203, 0.3);
+  border-radius: 3px;
+}
+
+.voice-lab select option {
+  background: #1a1a2e;
+  color: white;
+}
+
 @media (max-width: 640px) {
   .page {
     padding: 28px 16px 48px;
@@ -658,5 +710,9 @@ input[type='range'] {
 
   .wizard-steps {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .ai-feature-card {
+    padding: 12px;
   }
 }
