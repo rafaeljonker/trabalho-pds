@@ -54,9 +54,18 @@ from scipy import signal
 # Carrega variáveis de ambiente do .env
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
-# OpenAI client
-from openai import OpenAI
-openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# OpenAI client (opcional - funciona sem API key)
+openai_client = None
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+if OPENAI_API_KEY:
+    try:
+        from openai import OpenAI
+        openai_client = OpenAI(api_key=OPENAI_API_KEY)
+        print("OpenAI configurado com sucesso")
+    except Exception as e:
+        print(f"Aviso: OpenAI não disponível: {e}")
+else:
+    print("Aviso: OPENAI_API_KEY não configurada. Funcionalidades de AI desativadas.")
 
 # Tenta carregar libportaudio empacotada (baixada via apt-get download libportaudio2)
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -310,6 +319,13 @@ async def ws_handler(websocket):
 
             # Transcrever áudio com Whisper
             if action == "transcribe":
+                if not openai_client:
+                    await websocket.send(json.dumps({
+                        "ok": False,
+                        "action": "transcribe",
+                        "error": "OpenAI não configurado. Defina OPENAI_API_KEY no .env"
+                    }))
+                    continue
                 try:
                     audio_b64 = payload.get("audio", "")
                     audio_bytes = base64.b64decode(audio_b64)
@@ -343,6 +359,13 @@ async def ws_handler(websocket):
 
             # Gerar áudio com TTS (Text-to-Speech)
             if action == "tts":
+                if not openai_client:
+                    await websocket.send(json.dumps({
+                        "ok": False,
+                        "action": "tts",
+                        "error": "OpenAI não configurado. Defina OPENAI_API_KEY no .env"
+                    }))
+                    continue
                 try:
                     text = payload.get("text", "")
                     voice = payload.get("voice", "alloy")  # alloy, echo, fable, onyx, nova, shimmer
@@ -372,6 +395,13 @@ async def ws_handler(websocket):
 
             # Chat sobre Sonorização
             if action == "chatAgent":
+                if not openai_client:
+                    await websocket.send(json.dumps({
+                        "ok": False,
+                        "action": "chatAgent",
+                        "error": "OpenAI não configurado. Defina OPENAI_API_KEY no .env"
+                    }))
+                    continue
                 try:
                     user_message = payload.get("message", "")
 
@@ -411,6 +441,13 @@ Responda de forma clara e concisa. Seu papel é CLARIFICAR conceitos sobre áudi
 
             # Transformador de Voz: Transcrever -> TTS (dubla sua fala com voz diferente)
             if action == "voiceToVoice":
+                if not openai_client:
+                    await websocket.send(json.dumps({
+                        "ok": False,
+                        "action": "voiceToVoice",
+                        "error": "OpenAI não configurado. Defina OPENAI_API_KEY no .env"
+                    }))
+                    continue
                 try:
                     audio_b64 = payload.get("audio", "")
                     voice = payload.get("voice", "nova")
