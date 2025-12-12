@@ -1,0 +1,6 @@
+numpy
+scipy
+sounddevice
+websockets
+openai
+python-dotenv
